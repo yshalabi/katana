@@ -31,7 +31,7 @@ set(sources
   src/RDGCore.cpp
   src/RDGHandleImpl.cpp
   src/RDGLineage.cpp
-  src/RDGMeta.cpp
+  src/RDGManifest.cpp
   src/RDGPartHeader.cpp
   src/RDGPrefix.cpp
   src/RDGSlice.cpp

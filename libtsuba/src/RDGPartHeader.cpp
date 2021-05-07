@@ -226,7 +226,7 @@ RDGPartHeader::Write(RDGHandle handle, WriteGroup* writes) const {
     return KATANA_ERROR(ArrowToTsuba(res.code()), "arrow error: {}", res);
   }
 
-  ff->Bind(RDGMeta::PartitionFileName(
+  ff->Bind(RDGManifest::PartitionFileName(
                handle.impl_->rdg_meta().dir(), Comm()->ID,
                handle.impl_->rdg_meta().version() + 1)
                .string());

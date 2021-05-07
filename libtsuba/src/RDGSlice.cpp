@@ -47,7 +47,7 @@ tsuba::RDGSlice::Make(
     RDGHandle handle, const SliceArg& slice,
     const std::vector<std::string>* node_props,
     const std::vector<std::string>* edge_props) {
-  const RDGMeta& meta = handle.impl_->rdg_meta();
+  const RDGManifest& meta = handle.impl_->rdg_meta();
   if (meta.num_hosts() != 1) {
     return KATANA_ERROR(
         ErrorCode::NotImplemented,

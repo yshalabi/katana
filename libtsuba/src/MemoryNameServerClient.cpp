@@ -16,7 +16,7 @@
 
 namespace tsuba {
 
-katana::Result<RDGMeta>
+katana::Result<RDGManifest>
 MemoryNameServerClient::lookup(const std::string& key) {
   std::lock_guard<std::mutex> lock(mutex_);
   auto it = server_state_.find(key);
@@ -26,14 +26,15 @@ MemoryNameServerClient::lookup(const std::string& key) {
   return it->second;
 }
 
-katana::Result<RDGMeta>
+katana::Result<RDGManifest>
 MemoryNameServerClient::Get(const katana::Uri& rdg_name) {
   return lookup(rdg_name.Encode());
 }
 
 katana::Result<void>
 MemoryNameServerClient::CreateIfAbsent(
-    const katana::Uri& rdg_name, const RDGMeta& meta) {
+    const katana::Uri& rdg_name, const RDGManifest& meta) {
+  KATANA_LOG_DEBUG("CreateIfAbsent({})", rdg_name.string());
   std::string key = rdg_name.Encode();
 
   // CreateIfAbsent, Delete and Update are collective operations
@@ -67,7 +68,8 @@ MemoryNameServerClient::Delete(const katana::Uri& rdg_name) {
 
 katana::Result<void>
 MemoryNameServerClient::Update(
-    const katana::Uri& rdg_name, uint64_t old_version, const RDGMeta& meta) {
+    const katana::Uri& rdg_name, uint64_t old_version,
+    const RDGManifest& meta) {
   Comm()->Barrier();
 
   if (old_version >= meta.version()) {

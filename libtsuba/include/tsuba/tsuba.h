@@ -67,25 +67,23 @@ KATANA_EXPORT katana::Result<void> Close(RDGHandle handle);
 /// \param name is storage location prefix that will be used to store the RDG
 KATANA_EXPORT katana::Result<void> Create(const std::string& name);
 
-/// RegisterIfAbsent registers a previously created RDG and attaches it to the
-/// namespace; infer the version by examining files in name. If the RDG is
-/// already registered, this operation is a noop.
-///
-/// \param name is storage location prefix that the RDG is stored in
-KATANA_EXPORT katana::Result<void> RegisterIfAbsent(const std::string& name);
-
-/// Forget an RDG, detaching it from the namespace
-/// \param name is storage location prefix that the RDG is stored in
-KATANA_EXPORT katana::Result<void> Forget(const std::string& name);
-
 struct KATANA_EXPORT RDGStat {
   uint64_t num_partitions{0};
   uint32_t policy_id{0};
+  //TODO(yasser): add field for view type
   bool transpose{false};
 };
 
 /// Get Information about the graph
 KATANA_EXPORT katana::Result<RDGStat> Stat(const std::string& rdg_name);
+//KATANA_EXPORT katana::Result<RDGStat> StatView(const std::string& rdg_name);
+KATANA_EXPORT katana::Result<RDGStat> StatBase(const std::string& rdg_name);
+KATANA_EXPORT katana::Result<
+    std::vector<std::tuple<std::string, std::vector<std::string>, std::string>>>
+StatViews(const std::string& rdg_dir);
+
+KATANA_EXPORT katana::Result<katana::Uri> StatBaseUri(
+    const std::string& rdg_name);
 
 // Setup and tear down
 KATANA_EXPORT katana::Result<void> Init(katana::CommBackend* comm);

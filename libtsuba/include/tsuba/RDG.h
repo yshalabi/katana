@@ -23,7 +23,7 @@
 
 namespace tsuba {
 
-class RDGMeta;
+class RDGManifest;
 class RDGCore;
 struct PropStorageInfo;
 
@@ -183,7 +183,7 @@ private:
   katana::Result<void> DoMake(const katana::Uri& metadata_dir);
 
   static katana::Result<RDG> Make(
-      const RDGMeta& meta, const RDGLoadOptions& opts);
+      const RDGManifest& meta, const RDGLoadOptions& opts);
 
   katana::Result<void> AddPartitionMetadataArray(
       const std::shared_ptr<arrow::Table>& props);

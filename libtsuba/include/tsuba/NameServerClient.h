@@ -6,7 +6,7 @@
 
 namespace tsuba {
 
-class RDGMeta;
+class RDGManifest;
 
 class KATANA_EXPORT NameServerClient {
 public:
@@ -17,7 +17,7 @@ public:
   NameServerClient& operator=(const NameServerClient& no_copy) = delete;
   virtual ~NameServerClient();
 
-  virtual katana::Result<RDGMeta> Get(const katana::Uri& rdg_name) = 0;
+  virtual katana::Result<RDGManifest> Get(const katana::Uri& rdg_name) = 0;
 
   /// CreateIfAbsent creates a name server entry if it is not already
   /// present. If the name is already created and its version matches meta,
@@ -25,7 +25,7 @@ public:
   ///
   /// This is a collective operation.
   virtual katana::Result<void> CreateIfAbsent(
-      const katana::Uri& rdg_name, const RDGMeta& meta) = 0;
+      const katana::Uri& rdg_name, const RDGManifest& meta) = 0;
 
   /// Delete removes a name server entry.
   ///
@@ -37,7 +37,7 @@ public:
   /// This is a collective operation.
   virtual katana::Result<void> Update(
       const katana::Uri& rdg_name, uint64_t old_version,
-      const RDGMeta& meta) = 0;
+      const RDGManifest& meta) = 0;
 
   virtual katana::Result<void> CheckHealth() = 0;
 };

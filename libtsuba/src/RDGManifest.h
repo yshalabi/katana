@@ -15,9 +15,10 @@
 namespace tsuba {
 
 // Struct version of main graph metadatafile
-class KATANA_EXPORT RDGMeta {
+class KATANA_EXPORT RDGManifest {
   // meta files look like this: `meta_N` where `N` is the version number
   static const std::regex kMetaVersion;
+  static const std::regex kManifestVersion;
 
   katana::Uri dir_;  // not persisted; inferred from name
 
@@ -32,10 +33,14 @@ class KATANA_EXPORT RDGMeta {
   uint32_t policy_id_{0};
   bool transpose_{false};
   RDGLineage lineage_;
+  std::string view_type_;
+  std::vector<std::string> view_args_;
 
-  RDGMeta(katana::Uri dir) : dir_(std::move(dir)) {}
+  RDGManifest(katana::Uri dir) : dir_(std::move(dir)) {}
+  RDGManifest(katana::Uri dir, const std::string& view_type)
+      : dir_(std::move(dir)), view_type_(view_type) {}
 
-  RDGMeta(
+  RDGManifest(
       uint64_t version, uint64_t previous_version, uint32_t num_hosts,
       uint32_t policy_id, bool transpose, katana::Uri dir, RDGLineage lineage)
       : dir_(std::move(dir)),
@@ -46,56 +51,71 @@ class KATANA_EXPORT RDGMeta {
         transpose_(transpose),
         lineage_(std::move(lineage)) {}
 
-  static katana::Result<RDGMeta> MakeFromStorage(const katana::Uri& uri);
+  static katana::Result<RDGManifest> MakeFromStorage(const katana::Uri& uri);
 
   static std::string PartitionFileName(uint32_t node_id, uint64_t version);
+  static std::string PartitionFileName(
+      const std::string& view_type, uint32_t node_id, uint64_t version);
 
 public:
-  RDGMeta() = default;
+  RDGManifest() = default;
 
-  RDGMeta NextVersion(
+  RDGManifest NextVersion(
       uint32_t num_hosts, uint32_t policy_id, bool transpose,
       const RDGLineage& lineage) const {
-    return RDGMeta(
+    return RDGManifest(
         version_ + 1, version_, num_hosts, policy_id, transpose, dir_, lineage);
   }
 
   bool IsEmptyRDG() const { return num_hosts() == 0; }
 
-  static katana::Result<RDGMeta> Make(RDGHandle handle);
+  static katana::Result<RDGManifest> Make(RDGHandle handle);
 
-  /// Create an RDGMeta
+  /// Create an RDGManifest
   /// \param uri a uri that either names a registered RDG or an explicit
   ///    rdg file
-  /// \returns the constructed RDGMeta and the directory of its contents
-  static katana::Result<RDGMeta> Make(const katana::Uri& uri);
+  /// \returns the constructed RDGManifest and the directory of its contents
+  static katana::Result<RDGManifest> Make(const katana::Uri& uri);
 
-  /// Create an RDGMeta
+  /// Create an RDGManifest
   /// \param uri is a storage prefix where the RDG is stored
   /// \param version is the version of the meta_dir to load
-  /// \returns the constructed RDGMeta and the directory of its contents
-  static katana::Result<RDGMeta> Make(const katana::Uri& uri, uint64_t version);
+  /// \returns the constructed RDGManifest and the directory of its contents
+  static katana::Result<RDGManifest> Make(
+      const katana::Uri& uri, uint64_t version);
 
   const katana::Uri& dir() const { return dir_; }
   uint64_t version() const { return version_; }
   uint32_t num_hosts() const { return num_hosts_; }
   uint32_t policy_id() const { return policy_id_; }
   uint64_t previous_version() const { return previous_version_; }
+  void set_viewtype(std::string v) { view_type_ = v; }
+  void set_viewargs(std::vector<std::string> v) { view_args_ = v; }
+  const std::string& view_type() const { return view_type_; }
   bool transpose() const { return transpose_; }
 
   void set_dir(katana::Uri dir) { dir_ = std::move(dir); }
 
   katana::Uri PartitionFileName(uint32_t host_id) const;
 
-  katana::Uri FileName() { return FileName(dir_, version_); }
+  katana::Uri FileName() { return FileName(dir_, view_type_, version_); }
 
   // Canonical naming
-  static katana::Uri FileName(const katana::Uri& uri, uint64_t version);
+  static katana::Uri FileName(
+      const katana::Uri& uri, const std::string& view_type, uint64_t version);
 
   static katana::Uri PartitionFileName(
       const katana::Uri& uri, uint32_t node_id, uint64_t version);
 
+  static katana::Uri PartitionFileName(
+      const std::string& view_type, const katana::Uri& uri, uint32_t node_id,
+      uint64_t version);
+
   static katana::Result<uint64_t> ParseVersionFromName(const std::string& file);
+  static katana::Result<std::string> ParseViewNameFromName(
+      const std::string& file);
+  static katana::Result<std::vector<std::string>> ParseViewArgsFromName(
+      const std::string& file);
 
   static bool IsMetaUri(const katana::Uri& uri);
 
@@ -106,12 +126,12 @@ public:
   katana::Result<std::set<std::string>> FileNames();
 
   // Required by nlohmann
-  friend void to_json(nlohmann::json& j, const RDGMeta& meta);
-  friend void from_json(const nlohmann::json& j, RDGMeta& meta);
+  friend void to_json(nlohmann::json& j, const RDGManifest& meta);
+  friend void from_json(const nlohmann::json& j, RDGManifest& meta);
 };
 
-KATANA_EXPORT void to_json(nlohmann::json& j, const RDGMeta& meta);
-KATANA_EXPORT void from_json(const nlohmann::json& j, RDGMeta& meta);
+KATANA_EXPORT void to_json(nlohmann::json& j, const RDGManifest& meta);
+KATANA_EXPORT void from_json(const nlohmann::json& j, RDGManifest& meta);
 
 }  // namespace tsuba
 

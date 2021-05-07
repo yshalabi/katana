@@ -121,7 +121,7 @@ CommitRDG(
     tsuba::RDGHandle handle, uint32_t policy_id, bool transposed,
     const tsuba::RDGLineage& lineage, std::unique_ptr<tsuba::WriteGroup> desc) {
   katana::CommBackend* comm = tsuba::Comm();
-  tsuba::RDGMeta new_meta = handle.impl_->rdg_meta().NextVersion(
+  tsuba::RDGManifest new_meta = handle.impl_->rdg_meta().NextVersion(
       comm->Num, policy_id, transposed, lineage);
 
   // wait for all the work we queued to finish
@@ -148,15 +148,17 @@ CommitRDG(
 
     std::string curr_s = new_meta.ToJsonString();
     auto res = tsuba::FileStore(
-        tsuba::RDGMeta::FileName(
-            handle.impl_->rdg_meta().dir(), new_meta.version())
+        tsuba::RDGManifest::FileName(
+            handle.impl_->rdg_meta().dir(),
+            handle.impl_->rdg_meta().view_type(), new_meta.version())
             .string(),
         reinterpret_cast<const uint8_t*>(curr_s.data()), curr_s.size());
     if (!res) {
       return res.error().WithContext(
           "CommitRDG future failed {}",
-          tsuba::RDGMeta::FileName(
-              handle.impl_->rdg_meta().dir(), new_meta.version()));
+          tsuba::RDGManifest::FileName(
+              handle.impl_->rdg_meta().dir(),
+              handle.impl_->rdg_meta().view_type(), new_meta.version()));
     }
     return katana::ResultSuccess();
   });
@@ -496,7 +498,7 @@ tsuba::RDG::DoMake(const katana::Uri& metadata_dir) {
 }
 
 katana::Result<tsuba::RDG>
-tsuba::RDG::Make(const RDGMeta& meta, const RDGLoadOptions& opts) {
+tsuba::RDG::Make(const RDGManifest& meta, const RDGLoadOptions& opts) {
   uint32_t partition_id_to_load =
       opts.partition_id_to_load.value_or(Comm()->ID);
   katana::Uri partition_path = meta.PartitionFileName(partition_id_to_load);

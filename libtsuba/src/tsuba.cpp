@@ -1,5 +1,7 @@
 #include "tsuba/tsuba.h"
 
+#include <sstream>
+
 #include "GlobalState.h"
 #include "RDGHandleImpl.h"
 #include "katana/Backtrace.h"
@@ -27,6 +29,7 @@ FileList(const std::string& dir) {
   return files;
 }
 
+/*
 bool
 ContainsValidMetaFile(const std::string& dir) {
   auto list_res = FileList(dir);
@@ -36,16 +39,54 @@ ContainsValidMetaFile(const std::string& dir) {
     return false;
   }
   for (const std::string& file : list_res.value()) {
-    if (auto res = tsuba::RDGMeta::ParseVersionFromName(file); res) {
+    auto dir_file_uri = katana::Uri::Make(dir).value().Join(file);
+
+    if(tsuba::RDGManifest::IsMetaUri(dir_file_uri)) {
+      KATANA_LOG_DEBUG("ContainsValidMetaFile dir: {}: {}", dir,file);
       return true;
     }
   }
   return false;
+}*/
+
+katana::Result<katana::Uri>
+FindBaseMetaFile(const katana::Uri& name) {
+  KATANA_LOG_DEBUG_ASSERT(!tsuba::RDGManifest::IsMetaUri(name));
+  auto list_res = FileList(name.string());
+  if (!list_res) {
+    return list_res.error();
+  }
+
+  uint64_t last_version = 0;
+  std::string found_meta;
+  for (const std::string& file : list_res.value()) {
+    if (auto res = tsuba::RDGManifest::ParseViewNameFromName(file); res) {
+      if (res.value() != "rdg") {
+        continue;
+      }
+
+      if (auto res = tsuba::RDGManifest::ParseVersionFromName(file); res) {
+        if (res.value() > last_version) {
+          found_meta = file;
+          last_version = res.value();
+        }
+      }
+    }
+  }
+  if (found_meta.empty()) {
+    return KATANA_ERROR(
+        tsuba::ErrorCode::NotFound, "failed: could not find meta file in {}",
+        name);
+  }
+
+  auto res = name.Join(found_meta);
+
+  return name.Join(found_meta);
 }
 
 katana::Result<katana::Uri>
 FindLatestMetaFile(const katana::Uri& name) {
-  KATANA_LOG_DEBUG_ASSERT(!tsuba::RDGMeta::IsMetaUri(name));
+  KATANA_LOG_DEBUG_ASSERT(!tsuba::RDGManifest::IsMetaUri(name));
   auto list_res = FileList(name.string());
   if (!list_res) {
     return list_res.error();
@@ -54,7 +95,7 @@ FindLatestMetaFile(const katana::Uri& name) {
   uint64_t version = 0;
   std::string found_meta;
   for (const std::string& file : list_res.value()) {
-    if (auto res = tsuba::RDGMeta::ParseVersionFromName(file); res) {
+    if (auto res = tsuba::RDGManifest::ParseVersionFromName(file); res) {
       uint64_t new_version = res.value();
       if (new_version >= version) {
         version = new_version;
@@ -85,21 +126,24 @@ tsuba::Open(const std::string& rdg_name, uint32_t flags) {
   }
   katana::Uri uri = std::move(uri_res.value());
 
-  if (RDGMeta::IsMetaUri(uri)) {
-    return KATANA_ERROR(
-        ErrorCode::InvalidArgument,
-        "failed: {} is probably a literal rdg file and not suited for open",
-        uri);
-  }
-
-  if (!RDGMeta::IsMetaUri(uri)) {
-    // try to be helpful and look for RDGs that we don't know about
-    if (auto res = RegisterIfAbsent(uri.string()); !res) {
-      return res.error().WithContext("failed to auto-register");
+  if (RDGManifest::IsMetaUri(uri)) {
+    auto meta_res = tsuba::RDGManifest::Make(uri);
+    if (!meta_res) {
+      return meta_res.error();
     }
+
+    return RDGHandle{
+        .impl_ = new RDGHandleImpl(flags, std::move(meta_res.value()))};
   }
 
-  auto meta_res = tsuba::RDGMeta::Make(uri);
+  auto latest_uri = FindLatestMetaFile(uri);
+  if (!latest_uri) {
+    return KATANA_ERROR(
+        ErrorCode::InvalidArgument, "failed to find latest RDGManifest at {}",
+        uri.string());
+  }
+
+  auto meta_res = tsuba::RDGManifest::Make(latest_uri.value());
   if (!meta_res) {
     return meta_res.error();
   }
@@ -122,20 +166,21 @@ tsuba::Create(const std::string& name) {
   }
   katana::Uri uri = std::move(uri_res.value());
 
-  KATANA_LOG_DEBUG_ASSERT(!RDGMeta::IsMetaUri(uri));
+  KATANA_LOG_DEBUG_ASSERT(!RDGManifest::IsMetaUri(uri));
   // the default construction is the empty RDG
-  tsuba::RDGMeta meta{};
+  tsuba::RDGManifest meta{};
 
   katana::CommBackend* comm = Comm();
   if (comm->ID == 0) {
-    if (ContainsValidMetaFile(name)) {
-      return KATANA_ERROR(
-          ErrorCode::InvalidArgument,
-          "unable to create {}: path already contains a valid meta file", name);
-    }
+    //if (ContainsValidMetaFile(name)) {
+    //  return KATANA_ERROR(
+    ///      ErrorCode::InvalidArgument,
+    //      "unable to create {}: path already contains a valid meta file", name);
+    // }
     std::string s = meta.ToJsonString();
+    // TODO(yasser): this is not correct view type, place holder while rest is updated
     if (auto res = tsuba::FileStore(
-            tsuba::RDGMeta::FileName(uri, meta.version()).string(),
+            tsuba::RDGManifest::FileName(uri, "rdg", meta.version()).string(),
             reinterpret_cast<const uint8_t*>(s.data()), s.size());
         !res) {
       comm->NotifyFailure();
@@ -153,48 +198,68 @@ tsuba::Create(const std::string& name) {
   return katana::ResultSuccess();
 }
 
-katana::Result<void>
-tsuba::RegisterIfAbsent(const std::string& name) {
-  auto uri_res = katana::Uri::Make(name);
-  if (!uri_res) {
-    return uri_res.error();
-  }
-  katana::Uri uri = std::move(uri_res.value());
-
-  if (!RDGMeta::IsMetaUri(uri)) {
-    auto latest_res = FindLatestMetaFile(uri);
-    if (!latest_res) {
-      return latest_res.error();
-    }
-    uri = std::move(latest_res.value());
+katana::Result<
+    std::vector<std::tuple<std::string, std::vector<std::string>, std::string>>>
+tsuba::StatViews(const std::string& rdg_dir) {
+  std::vector<std::tuple<std::string, std::vector<std::string>, std::string>>
+      views_found;
+  auto list_res = FileList(rdg_dir);
+  if (!list_res) {
+    return list_res.error();
   }
 
-  auto meta_res = RDGMeta::Make(uri);
-  if (!meta_res) {
-    return meta_res.error();
+  for (const std::string& file : list_res.value()) {
+    auto view_type_res = tsuba::RDGManifest::ParseViewNameFromName(file);
+    auto view_args_res = tsuba::RDGManifest::ParseViewArgsFromName(file);
+    if (!view_type_res || !view_args_res)
+      continue;
+    views_found.push_back({view_type_res.value(), view_args_res.value(), file});
   }
-  RDGMeta meta = std::move(meta_res.value());
 
-  return tsuba::NS()->CreateIfAbsent(meta.dir(), meta);
+  return views_found;
 }
 
-katana::Result<void>
-tsuba::Forget(const std::string& name) {
-  auto uri_res = katana::Uri::Make(name);
+katana::Result<katana::Uri>
+tsuba::StatBaseUri(const std::string& rdg_name) {
+  auto uri_res = katana::Uri::Make(rdg_name);
   if (!uri_res) {
     return uri_res.error();
   }
   katana::Uri uri = std::move(uri_res.value());
 
-  if (RDGMeta::IsMetaUri(uri)) {
-    return KATANA_ERROR(
-        ErrorCode::InvalidArgument,
-        "uri does not look like a graph name (ends in meta): {}", uri.string());
+  auto base_uri = FindBaseMetaFile(uri);
+  if (!base_uri) {
+    KATANA_LOG_DEBUG("failed to find base rdg file: {}", base_uri.error());
+    return base_uri.error();
+  }
+  return base_uri;
+}
+
+katana::Result<tsuba::RDGStat>
+tsuba::StatBase(const std::string& rdg_name) {
+  KATANA_LOG_DEBUG("tsuba::StatBase(rdg_name={})", rdg_name);
+  auto uri_res = katana::Uri::Make(rdg_name);
+  if (!uri_res) {
+    return uri_res.error();
+  }
+  katana::Uri uri = std::move(uri_res.value());
+
+  auto base_uri = FindBaseMetaFile(uri);
+  if (!base_uri) {
+    return base_uri.error();
   }
 
-  // NS ensures only host 0 creates
-  auto res = tsuba::NS()->Delete(uri);
-  return res;
+  auto rdg_res = RDGManifest::Make(base_uri.value());
+  if (!rdg_res) {
+    return rdg_res.error();
+  }
+
+  RDGManifest meta = rdg_res.value();
+  return RDGStat{
+      .num_partitions = meta.num_hosts(),
+      .policy_id = meta.policy_id(),
+      .transpose = meta.transpose(),
+  };
 }
 
 katana::Result<tsuba::RDGStat>
@@ -205,14 +270,16 @@ tsuba::Stat(const std::string& rdg_name) {
   }
   katana::Uri uri = std::move(uri_res.value());
 
-  if (!RDGMeta::IsMetaUri(uri)) {
-    // try to be helpful and look for RDGs that we don't know about
-    if (auto res = RegisterIfAbsent(uri.string()); !res) {
-      return res.error().WithContext("failed to auto-register");
+  // IF this is a directory, try to find the latest version within and return
+  if (!RDGManifest::IsMetaUri(uri)) {
+    auto latest_uri = FindLatestMetaFile(uri);
+    if (!latest_uri) {
+      return latest_uri.error();
     }
+    return tsuba::Stat(latest_uri.value().string());
   }
 
-  auto rdg_res = RDGMeta::Make(uri);
+  auto rdg_res = RDGManifest::Make(uri);
   if (!rdg_res) {
     if (rdg_res.error() == katana::ErrorCode::JsonParseFailed) {
       return RDGStat{
@@ -224,7 +291,7 @@ tsuba::Stat(const std::string& rdg_name) {
     return rdg_res.error();
   }
 
-  RDGMeta meta = rdg_res.value();
+  RDGManifest meta = rdg_res.value();
   return RDGStat{
       .num_partitions = meta.num_hosts(),
       .policy_id = meta.policy_id(),

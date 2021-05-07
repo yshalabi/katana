@@ -1,6 +1,7 @@
 #include "tsuba/RDGPrefix.h"
 
 #include "RDGHandleImpl.h"
+#include "RDGManifest.h"
 #include "RDGPartHeader.h"
 #include "katana/Result.h"
 #include "tsuba/Errors.h"
@@ -9,7 +10,7 @@
 namespace tsuba {
 
 katana::Result<tsuba::RDGPrefix>
-RDGPrefix::DoMakePrefix(const tsuba::RDGMeta& meta) {
+RDGPrefix::DoMakePrefix(const tsuba::RDGManifest& meta) {
   auto meta_res = RDGPartHeader::Make(meta.PartitionFileName(0));
   if (!meta_res) {
     return meta_res.error();

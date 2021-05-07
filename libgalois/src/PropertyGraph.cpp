@@ -232,18 +232,23 @@ katana::PropertyGraph::Copy(
 katana::Result<void>
 katana::PropertyGraph::WriteGraph(
     const std::string& uri, const std::string& command_line) {
+  KATANA_LOG_DEBUG(
+      "PropertyGraph::WriteGraph(uri={}, command_line={}", uri, command_line);
   auto open_res = tsuba::Open(uri, tsuba::kReadWrite);
   if (!open_res) {
+    KATANA_LOG_DEBUG("tsuba::Open(uri={}) failed: {}", uri, open_res.error());
     return open_res.error();
   }
   auto new_file = std::make_unique<tsuba::RDGFile>(open_res.value());
 
   if (auto res = DoWrite(*new_file, command_line); !res) {
+    KATANA_LOG_DEBUG("PropertyGraph::DoWrite failed: {}", res.error());
     return res.error();
   }
 
   file_ = std::move(new_file);
 
+  KATANA_LOG_DEBUG("PropertyGraph::DoWrite succeeded!");
   return katana::ResultSuccess();
 }
 
@@ -363,9 +368,15 @@ katana::PropertyGraph::ReportDiff(const PropertyGraph* other) const {
 katana::Result<void>
 katana::PropertyGraph::Write(
     const std::string& rdg_name, const std::string& command_line) {
+  KATANA_LOG_DEBUG(
+      "PropertyGraph::Write(rdg_name={},command_line={}", rdg_name,
+      command_line);
   if (auto res = tsuba::Create(rdg_name); !res) {
     return res.error();
   }
+  KATANA_LOG_DEBUG(
+      "PropertyGraph::Write(rdg_name={},command_line={}", rdg_name,
+      command_line);
   return WriteGraph(rdg_name, command_line);
 }
 
